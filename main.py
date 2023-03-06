@@ -3,7 +3,7 @@ import logging
 from flight_search import FlightSearch
 from telebot import TeleBot
 from telebot import types
-from telegram_bot_calendar import DetailedTelegramCalendar, LSTEP
+from telegram_bot_calendar import LSTEP, WMonthTelegramCalendar
 from flight_data import FlightRequestData
 import os
 from dotenv import load_dotenv
@@ -22,8 +22,8 @@ bot.set_my_commands([
 ])
 
 # Initialize dates, format ex.: 09/01/2023
-tomorrow_date = (datetime.date.today() + datetime.timedelta(days=1)).strftime("%d/%m/%Y")
-six_months_date = (datetime.date.today() + datetime.timedelta(days=180)).strftime("%d/%m/%Y")
+tomorrow_date = (datetime.date.today() + datetime.timedelta(days=1))
+six_months_date = (datetime.date.today() + datetime.timedelta(days=180))
 
 # Initialize flight search and request data classes
 flight_search = FlightSearch()
@@ -31,8 +31,7 @@ flight_req_data = FlightRequestData()
 
 # Initialize geonamescache to get all city names
 gc = geonamescache.GeonamesCache()
-# if gc.get_cities_by_name("vienna".lower().title()):
-#     print(gc.get_cities_by_name('Vienna'))
+
 
 # Start bot
 @bot.message_handler(commands=['start'])
@@ -47,9 +46,9 @@ def message_handler(message, invalid_cities=False):
 
 
 # Bot callbacks
-@bot.callback_query_handler(func=DetailedTelegramCalendar.func())
+@bot.callback_query_handler(func=WMonthTelegramCalendar.func())
 def next_page(call):
-    result, key, step = DetailedTelegramCalendar().process(call.data)
+    result, key, step = WMonthTelegramCalendar(min_date=tomorrow_date, max_date=six_months_date).process(call.data)
     m = call.message
 
     if not result and key:
@@ -66,7 +65,6 @@ def callback_query(call):
     if call.data == "round":
         get_duration_of_stay(call.message)
     if call.data == "oneway":
-        bot.answer_callback_query(call.id, "THIS IS AN ALERT")
         flight_req_data.duration_of_stay = 1
     if call.data == "3_days":
         flight_req_data.duration_of_stay = 3
@@ -103,7 +101,7 @@ def search_flight(fly_from, fly_to, flight_type, duration, departure_date):
         flight = flight_search.search_round_flights(fly_from=fly_from,
                                                     fly_to=fly_to,
                                                     date_from=departure_date,
-                                                    date_to=six_months_date,
+                                                    date_to=six_months_date.strftime("%d/%m/%Y"),
                                                     nights_in_dst_from=duration[0],
                                                     nights_in_dst_to=duration[1],
                                                     flight_type=flight_type,
@@ -121,7 +119,7 @@ def search_flight(fly_from, fly_to, flight_type, duration, departure_date):
         flight = flight_search.search_oneway_flights(fly_from=fly_from,
                                                      fly_to=fly_to,
                                                      date_from=departure_date,
-                                                     date_to=six_months_date,
+                                                     date_to=six_months_date.strftime("%d/%m/%Y"),
                                                      flight_type=flight_req_data.flight_type,
                                                      vehicle_type="aircraft",
                                                      max_stopovers=0,
@@ -143,7 +141,7 @@ def get_departure_date(message):
     # TODO: add regex check
     if '/' not in message.text \
             or len(message.text.split('/')) < 2 \
-            or message.text.split('/')[1] == ''  \
+            or message.text.split('/')[1] == '' \
             or not gc.get_cities_by_name(message.text.split('/')[0].lower().title()) \
             or not gc.get_cities_by_name(message.text.split('/')[1].lower().title()):
         logging.warning(f"{message.from_user.username} requested wrong city pairs: {message.text}")
@@ -151,9 +149,9 @@ def get_departure_date(message):
     else:
         flight_req_data.city_pairs = message.text
         flight_req_data.username = message.from_user.username
-        calendar, step = DetailedTelegramCalendar().build()
+        calendar, step = WMonthTelegramCalendar().build()
         bot.send_message(message.chat.id,
-                         f"Select {LSTEP[step]}",
+                         f"Select earliest departure {LSTEP[step]}",
                          reply_markup=calendar)
 
 
