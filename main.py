@@ -166,9 +166,3 @@ def send_flight_details(message):
 
 
 bot.infinity_polling()
-
-# TODO: Use flight_data object instead of ugly globals DONE
-# TODO: Add filtering by from/todate: Added filtering fromdate via calendar, not sure about todate now
-# TODO: Add filtering by airline: not sure if necessary?
-# TODO: Add dotenv to store secrets in .env DONE
-# TODO: Update with docustirng and add read.me (try using chatgpt to generate documentation)
