@@ -1,5 +1,5 @@
 import datetime
-
+import logging
 from flight_search import FlightSearch
 from telebot import TeleBot
 from telebot import types
@@ -7,7 +7,12 @@ from telegram_bot_calendar import DetailedTelegramCalendar, LSTEP
 from flight_data import FlightRequestData
 import os
 from dotenv import load_dotenv
+import geonamescache
+
 load_dotenv(verbose=True)
+
+# Logging config
+logging.basicConfig(level=logging.INFO)
 
 # Initialize bot
 BOT_TOKEN = os.getenv("TG_BOT_TOKEN")
@@ -24,19 +29,26 @@ six_months_date = (datetime.date.today() + datetime.timedelta(days=180)).strftim
 flight_search = FlightSearch()
 flight_req_data = FlightRequestData()
 
+# Initialize geonamescache to get all city names
+gc = geonamescache.GeonamesCache()
+# if gc.get_cities_by_name("vienna".lower().title()):
+#     print(gc.get_cities_by_name('Vienna'))
 
 # Start bot
 @bot.message_handler(commands=['start'])
-def message_handler(message):
+def message_handler(message, invalid_cities=False):
+    logging.info("Bot initiated")
     msg = bot.send_message(message.chat.id,
                            f"Which cities are you flying to?\nSpecify the cities divided by slash")
+    if invalid_cities:
+        bot.edit_message_text(f"Wrong format. Please specify cities divided by slash."
+                              f"\nExample: Paris/Vienna", msg.chat.id, msg.message_id)
     bot.register_next_step_handler(msg, get_departure_date)
 
 
 # Bot callbacks
 @bot.callback_query_handler(func=DetailedTelegramCalendar.func())
 def next_page(call):
-    print("calendar callback")
     result, key, step = DetailedTelegramCalendar().process(call.data)
     m = call.message
 
@@ -54,6 +66,7 @@ def callback_query(call):
     if call.data == "round":
         get_duration_of_stay(call.message)
     if call.data == "oneway":
+        bot.answer_callback_query(call.id, "THIS IS AN ALERT")
         flight_req_data.duration_of_stay = 1
     if call.data == "3_days":
         flight_req_data.duration_of_stay = 3
@@ -63,7 +76,7 @@ def callback_query(call):
         specify_stay_range(call.message)
         bot.register_next_step_handler(call.message, send_flight_details)
 
-    if flight_req_data.flight_type and flight_req_data.duration_of_stay != 0 and call.data != 'other':
+    if flight_req_data.flight_type and flight_req_data.duration_of_stay and call.data != 'other':
         send_flight_details(call.message)
 
 
@@ -122,28 +135,34 @@ def search_flight(fly_from, fly_to, flight_type, duration, departure_date):
 
 
 def get_flight_type(message):
-    print("step 1")
     bot.send_message(message.chat.id, "Oneway or round trip?",
                      reply_markup=gen_markup_flight_type())
-    print(f"city pairs: {flight_req_data.city_pairs}")
 
 
 def get_departure_date(message):
-    calendar, step = DetailedTelegramCalendar().build()
-    bot.send_message(message.chat.id,
-                     f"Select {LSTEP[step]}",
-                     reply_markup=calendar)
-    flight_req_data.city_pairs = message.text
+    # TODO: add regex check
+    if '/' not in message.text \
+            or len(message.text.split('/')) < 2 \
+            or message.text.split('/')[1] == ''  \
+            or not gc.get_cities_by_name(message.text.split('/')[0].lower().title()) \
+            or not gc.get_cities_by_name(message.text.split('/')[1].lower().title()):
+        logging.warning(f"{message.from_user.username} requested wrong city pairs: {message.text}")
+        message_handler(message, True)
+    else:
+        flight_req_data.city_pairs = message.text
+        flight_req_data.username = message.from_user.username
+        calendar, step = DetailedTelegramCalendar().build()
+        bot.send_message(message.chat.id,
+                         f"Select {LSTEP[step]}",
+                         reply_markup=calendar)
 
 
 def get_duration_of_stay(message):
-    print("step 2")
     bot.send_message(message.chat.id, "How many days to stay?",
                      reply_markup=gen_markup_duration_of_stay())
 
 
 def specify_stay_range(message):
-    print("additional step")
     bot.send_message(message.chat.id,
                      "Specify stay range divided by dash\nExample: 3-5 (between 3 and 5 days)")
 
@@ -156,6 +175,10 @@ def send_flight_details(message):
 
     iata_code_from = flight_search.get_iata_code(city=flight_req_data.city_pairs.split('/')[0])
     iata_code_to = flight_search.get_iata_code(city=flight_req_data.city_pairs.split('/')[1])
+
+    logging.info(f"{flight_req_data.username} requested {flight_req_data.flight_type} flight from"
+                 f" {iata_code_from} to {iata_code_to}")
+
     bot.send_message(message.chat.id, search_flight(fly_from=iata_code_from.strip(),
                                                     fly_to=iata_code_to.strip(),
                                                     departure_date=flight_req_data.departure_date,

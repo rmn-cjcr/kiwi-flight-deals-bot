@@ -21,3 +21,4 @@ class FlightRequestData:
     city_pairs: str = ""
     flight_type: str = ""
     duration_of_stay: str = ""
+    username: str = ""

@@ -1,4 +1,5 @@
 import requests
+import logging
 from flight_data import FlightResponseData
 import os
 from dotenv import load_dotenv
@@ -22,7 +23,6 @@ class FlightSearch:
         }
 
         response = requests.get(url=FLIGHT_LOCATION_URL, headers=headers, params=params)
-        print(response.text)
         return response.json()["locations"][0]['code']
 
     def search_round_flights(self, **kwargs):
@@ -34,12 +34,14 @@ class FlightSearch:
             params[key] = value
 
         response = requests.get(url=FLIGHT_SEARCH_URL, headers=headers, params=params)
-        print(response.text)
         try:
             data = response.json()["data"][0]
         except IndexError:
             print(f"No flights found for {kwargs['fly_from']}.")
+            logging.info(f"No flights found for {kwargs['fly_from']}.")
             return None
+        except KeyError:
+            logging.info(f"Invalid data key in response: {response.json()}")
 
         flight_data = FlightResponseData(
             price=data["price"],
@@ -62,11 +64,11 @@ class FlightSearch:
             params[key] = value
 
         response = requests.get(url=FLIGHT_SEARCH_URL, headers=headers, params=params)
-        print(response.text)
         try:
             data = response.json()["data"][0]
         except IndexError:
-            print(f"No flights found for {kwargs['fly_from']}.")
+            print(f"No flights found for {kwargs['fly_from']}/{kwargs['fly_to']}.")
+            logging.info(f"No flights found for {kwargs['fly_from']}//{kwargs['fly_to']}.")
             return None
 
         flight_data = FlightResponseData(
