@@ -1,4 +1,5 @@
 from dataclasses import dataclass
+from typing import Union
 
 
 class FlightResponseData:
@@ -17,8 +18,8 @@ class FlightResponseData:
 
 @dataclass
 class FlightRequestData:
-    duration_of_stay: int = 0
+    duration_of_stay: Union[str, int] = ""
     city_pairs: str = ""
     flight_type: str = ""
-    duration_of_stay: str = ""
     username: str = ""
+    is_other: bool = False
